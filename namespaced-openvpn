@@ -38,6 +38,17 @@ UMOUNT_CMD = '/bin/umount'
 B64_EMPTY_SENTINEL = '='
 
 
+def prompt_yes_or_no(query):
+    while True:
+        response = input(query + ' [Y/n] ').lower()
+        if response in {'y', 'yes'}:
+            return True
+        elif response in {'n', 'no'}:
+            return False
+        else:
+            print('Invalid response!\n')
+
+
 def _enter_namespace_cmd(namespace):
     """Generate a prefix for a command so that it will execute in `namespace`."""
     if namespace is None:
@@ -65,8 +76,14 @@ def setup_namespace(namespace):
     if os.path.exists(os.path.join('/var/run/netns', namespace)):
         adapters = _adapter_names(namespace)
         if adapters != [b'lo']:
-            LOG.error('Namespace %s already has adapters %s, exiting.' % (namespace, adapters))
-            raise Exception
+            LOG.error('Namespace %s already has adapters %s.' % (namespace, adapters))
+            resume = prompt_yes_or_no('Delete existing namespace and resume?')
+            if resume:
+                subprocess.check_call([IP_CMD, 'netns', 'delete', namespace])
+                subprocess.check_call(['rm', '--recursive', '--force', f'/etc/netns/{namespace}'])
+                subprocess.check_call(_enter_namespace_cmd('') + [IP_CMD, 'netns', 'add', namespace])
+            else:
+                raise Exception
     else:
         subprocess.check_call(_enter_namespace_cmd('') + [IP_CMD, 'netns', 'add', namespace])
     subprocess.check_call(_enter_namespace_cmd(namespace) + [IP_CMD, 'link', 'set', 'lo', 'up'])
